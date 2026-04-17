@@ -2,6 +2,7 @@
 import { motion, useMotionValue, useTransform, useSpring, useScroll } from 'framer-motion';
 import { useRef } from 'react';
 import Image from 'next/image';
+import { useStore } from '@/context/StoreContext';
 
 const PRODUCT_IMAGES = [
   'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=300&q=80',
@@ -16,8 +17,6 @@ const PRODUCT_IMAGES = [
   'https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?auto=format&fit=crop&w=300&q=80',
 ];
 
-// ─── STABLE: Computed once at module level, never changes ───────────────────
-// Fixes hydration mismatch and flickering caused by Math.random() in useMemo
 function buildCubies() {
   const arr: { x: number; y: number; z: number; images: string[] }[] = [];
   let imgIdx = 0;
@@ -25,7 +24,6 @@ function buildCubies() {
     for (let y = -1; y <= 1; y++) {
       for (let z = -1; z <= 1; z++) {
         if (x === 0 && y === 0 && z === 0) continue;
-        // Deterministic assignment — no Math.random()
         const images = Array.from({ length: 6 }, (_, i) =>
           PRODUCT_IMAGES[(imgIdx + i) % PRODUCT_IMAGES.length]
         );
@@ -38,9 +36,9 @@ function buildCubies() {
 }
 
 const STABLE_CUBIES = buildCubies();
-// ─────────────────────────────────────────────────────────────────────────────
 
 function Cubie({ x, y, z, size, gap, images }: { x: number; y: number; z: number; size: number; gap: number; images: string[] }) {
+  const { addToCart } = useStore();
   const offset = size + gap;
   const translateX = x * offset;
   const translateY = y * offset;
@@ -68,15 +66,27 @@ function Cubie({ x, y, z, size, gap, images }: { x: number; y: number; z: number
       {faces.map((f, i) => f.show && (
         <div 
           key={i}
-          className="absolute inset-0 bg-zinc-900 border-[1px] border-black/50 overflow-hidden"
+          onClick={(e) => {
+            e.stopPropagation();
+            addToCart({ 
+                id: `mosaic-${x}-${y}-${z}-${f.dir}`, 
+                title: 'Archive Sample', 
+                price: '€640', 
+                image: f.img 
+            });
+          }}
+          className="absolute inset-0 bg-zinc-900 border-[1px] border-black/50 overflow-hidden cursor-pointer"
           style={{ 
             transform: `${f.rotate} translateZ(${size/2}px)`,
             backfaceVisibility: 'hidden'
           }}
         >
           {f.img && (
-            <div className="relative w-full h-full opacity-80 hover:opacity-100 transition-opacity grayscale hover:grayscale-0 duration-500">
+            <div className="relative w-full h-full opacity-80 hover:opacity-100 transition-opacity grayscale hover:grayscale-0 duration-500 group">
                <Image src={f.img} alt="Product" fill className="object-cover" sizes="150px" />
+               <div className="absolute inset-x-0 bottom-0 bg-white/20 backdrop-blur-md h-0 group-hover:h-8 transition-all duration-300 flex items-center justify-center">
+                  <span className="text-[8px] font-black tracking-widest text-black">+ ADD</span>
+               </div>
                <div className="absolute inset-0 border-[4px] border-black/20 pointer-events-none" />
             </div>
           )}
@@ -88,13 +98,8 @@ function Cubie({ x, y, z, size, gap, images }: { x: number; y: number; z: number
 }
 
 export default function ProductMosaicCube() {
-  // Fix: use HTMLElement type so motion.section ref is compatible
   const containerRef = useRef<HTMLElement>(null);
-
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ["start end", "end start"]
-  });
+  const { scrollYProgress } = useScroll({ target: containerRef, offset: ["start end", "end start"] });
 
   const opacity = useTransform(scrollYProgress, [0, 0.15, 0.8, 1], [0, 1, 1, 0]);
   const scale = useTransform(scrollYProgress, [0, 0.2, 0.8, 1], [0.92, 1, 1, 0.92]);
@@ -103,9 +108,8 @@ export default function ProductMosaicCube() {
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
 
-  const springConfig = { stiffness: 40, damping: 25 };
-  const smoothX = useSpring(mouseX, springConfig);
-  const smoothY = useSpring(mouseY, springConfig);
+  const smoothX = useSpring(mouseX, { stiffness: 40, damping: 25 });
+  const smoothY = useSpring(mouseY, { stiffness: 40, damping: 25 });
 
   const rotateY = useTransform(smoothX, [-0.5, 0.5], [-180, 180]);
   const rotateX = useTransform(smoothY, [-0.5, 0.5], [180, -180]);
@@ -117,24 +121,18 @@ export default function ProductMosaicCube() {
     mouseY.set((e.clientY - rect.top) / rect.height - 0.5);
   };
 
-  const handleMouseLeave = () => {
-    mouseX.set(0);
-    mouseY.set(0);
-  };
-
   return (
     <motion.section
       ref={containerRef}
       onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
+      onMouseLeave={() => { mouseX.set(0); mouseY.set(0); }}
       style={{ opacity, scale, y: yTranslate, perspective: '1500px' }}
-      // "relative" is required for useScroll to calculate offset correctly
       className="h-[75vh] w-full bg-zinc-950 relative flex flex-col items-center justify-center overflow-hidden pt-4 pb-8 origin-center"
     >
       <div className="absolute top-6 left-1/2 -translate-x-1/2 text-center z-20 pointer-events-none">
         <span className="text-[10px] uppercase tracking-[0.6em] text-zinc-600 font-bold mb-4 block">Collection Cube</span>
         <h2 className="text-5xl font-serif text-white/80 tracking-tighter">Tactile Archive</h2>
-        <p className="mt-4 text-zinc-500 text-xs uppercase tracking-widest opacity-40">Drag to rotate the artifact</p>
+        <p className="mt-4 text-zinc-500 text-xs uppercase tracking-widest opacity-40">Slide to rotate | Click face to bag</p>
       </div>
 
       <motion.div
@@ -150,12 +148,6 @@ export default function ProductMosaicCube() {
           ))}
         </div>
       </motion.div>
-
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] border border-white/[0.03] rounded-full" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] border border-white/[0.05] rounded-full" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] border border-white/[0.08] rounded-full" />
-      </div>
 
       <div className="absolute bottom-6 right-[5vw] text-right">
         <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-black">Ref. 3x3x3_ARTIF_01</p>

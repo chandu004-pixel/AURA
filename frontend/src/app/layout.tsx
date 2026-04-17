@@ -2,6 +2,7 @@ import './globals.css';
 import { Inter, Playfair_Display } from 'next/font/google';
 import PageLoader from '@/components/PageLoader';
 import Navbar from '@/components/Navbar';
+import { StoreProvider } from '@/context/StoreContext';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const playfair = Playfair_Display({ subsets: ['latin'], variable: '--font-playfair' });
@@ -19,9 +20,11 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${playfair.variable}`}>
       <body className="font-sans antialiased">
-        <PageLoader />
-        <Navbar />
-        {children}
+        <StoreProvider>
+          <PageLoader />
+          <Navbar />
+          {children}
+        </StoreProvider>
       </body>
     </html>
   );
